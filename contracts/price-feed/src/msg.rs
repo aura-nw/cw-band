@@ -1,11 +1,18 @@
 use crate::state::{Rate, ReferenceData};
 use cosmwasm_schema::{cw_serde, QueryResponses};
-use cosmwasm_std::{Coin, Uint64};
+use cosmwasm_std::{Coin, Uint128, Uint64};
 
 #[cw_serde]
 pub struct InstantiateMsg {
     // A unique ID for the oracle request
     pub client_id: String,
+    // Manager of contract
+    pub manager: String,
+    /// The prices of a oracle. List is to be interpreted as oneof,
+    /// i.e. payment must be paid in one of those denominations.
+    /// If this list is empty, the user cannot pay. This can be used to put the
+    /// contract out of service.
+    pub prices: Vec<Coin>,
     // The oracle script ID to query
     pub oracle_script_id: Uint64,
     // The number of validators that are requested to respond
@@ -25,7 +32,19 @@ pub struct InstantiateMsg {
 
 #[cw_serde]
 pub enum ExecuteMsg {
-    Request { symbols: Vec<String> },
+    Request {
+        symbols: Vec<String>,
+    },
+    /// Withdraw the given amount to the withdrawal address.
+    ///
+    /// Only the manager address can do that.
+    Withdraw {
+        denom: String,
+        /// The amount of tokens to withdraw.
+        /// If None, withdraw all available balance of the given denom.
+        amount: Option<Uint128>,
+        address: String,
+    },
 }
 
 #[cw_serde]

@@ -19,6 +19,15 @@ pub enum ContractError {
     #[error("Only supports unordered channel")]
     OnlyUnorderedChannel {},
 
+    #[error("No payment option is configured in this contract")]
+    NoPaymentOption,
+
+    #[error("Insufficient payment")]
+    InsufficientPayment,
+
+    #[error("Unauthorized")]
+    Unauthorized,
+
     #[error("Custom Error val: {val:?}")]
     CustomError { val: String },
     // Add any other custom errors you like here.

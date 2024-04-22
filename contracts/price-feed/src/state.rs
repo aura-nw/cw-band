@@ -6,6 +6,8 @@ use cw_storage_plus::{Item, Map};
 #[cw_serde]
 pub struct Config {
     pub client_id: String,
+    pub manager: String,
+    pub prices: Vec<Coin>,
     pub oracle_script_id: Uint64,
     pub ask_count: Uint64,
     pub min_count: Uint64,
@@ -40,6 +42,8 @@ pub const RATES: Map<&str, Rate> = Map::new("rates");
 pub const ENDPOINT: Item<IbcEndpoint> = Item::new("endpoint");
 
 pub const BAND_CONFIG: Item<Config> = Item::new("config");
+
+pub const ATTR_ACTION: &str = "action";
 
 #[cw_serde]
 pub struct ReferenceData {

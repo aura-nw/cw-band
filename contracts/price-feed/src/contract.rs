@@ -1,14 +1,16 @@
+use std::collections::BTreeMap;
+
 #[cfg(not(feature = "library"))]
 use cosmwasm_std::entry_point;
 use cosmwasm_std::{
-    to_binary, Binary, Deps, DepsMut, Empty, Env, IbcMsg, IbcTimeout, MessageInfo, Response,
-    StdResult, Uint256, Uint64,
+    to_binary, BankMsg, Binary, Coin, Deps, DepsMut, Empty, Env, IbcMsg, IbcTimeout, MessageInfo,
+    Response, StdResult, Uint128, Uint256, Uint64,
 };
 use cw2::set_contract_version;
 
 use crate::error::ContractError;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
-use crate::state::{Config, Rate, ReferenceData, BAND_CONFIG, ENDPOINT, RATES};
+use crate::state::{Config, Rate, ReferenceData, ATTR_ACTION, BAND_CONFIG, ENDPOINT, RATES};
 use obi::enc::OBIEncode;
 
 use cw_band::{Input, OracleRequestPacketData};
@@ -38,6 +40,8 @@ pub fn instantiate(
         deps.storage,
         &Config {
             client_id: msg.client_id,
+            manager: msg.manager,
+            prices: msg.prices,
             oracle_script_id: msg.oracle_script_id,
             ask_count: msg.ask_count,
             min_count: msg.min_count,
@@ -55,11 +59,16 @@ pub fn instantiate(
 pub fn execute(
     deps: DepsMut,
     env: Env,
-    _info: MessageInfo,
+    info: MessageInfo,
     msg: ExecuteMsg,
 ) -> Result<Response, ContractError> {
     match msg {
-        ExecuteMsg::Request { symbols } => try_request(deps, env, symbols),
+        ExecuteMsg::Request { symbols } => try_request(deps, env, info, symbols),
+        ExecuteMsg::Withdraw {
+            denom,
+            amount,
+            address,
+        } => execute_withdraw(deps, env, info, denom, amount, address),
     }
 }
 
@@ -69,10 +78,12 @@ pub fn execute(
 pub fn try_request(
     deps: DepsMut,
     env: Env,
+    info: MessageInfo,
     symbols: Vec<String>,
 ) -> Result<Response, ContractError> {
     let endpoint = ENDPOINT.load(deps.storage)?;
     let config = BAND_CONFIG.load(deps.storage)?;
+    validate_payment(&config.prices, &info.funds)?;
 
     let raw_calldata = Input {
         symbols,
@@ -100,6 +111,74 @@ pub fn try_request(
         data: to_binary(&packet)?,
         timeout: IbcTimeout::with_timestamp(env.block.time.plus_seconds(60)),
     }))
+}
+
+fn execute_withdraw(
+    deps: DepsMut,
+    env: Env,
+    info: MessageInfo,
+    denom: String,
+    amount: Option<Uint128>,
+    address: String,
+) -> Result<Response, ContractError> {
+    let config = BAND_CONFIG.load(deps.storage)?;
+
+    // if manager set, check the calling address is the authorised multisig otherwise error unauthorised
+    let manager = config.manager;
+    if info.sender != manager {
+        return Err(ContractError::Unauthorized);
+    }
+
+    withdraw_unchecked(deps, env, "execute_withdraw", denom, amount, address)
+}
+
+fn withdraw_unchecked(
+    deps: DepsMut,
+    env: Env,
+    action: &str,
+    denom: String,
+    amount: Option<Uint128>,
+    address: String,
+) -> Result<Response, ContractError> {
+    let address = deps.api.addr_validate(&address)?;
+    let amount: Coin = match amount {
+        Some(amount) => Coin { denom, amount },
+        None => deps.querier.query_balance(env.contract.address, denom)?,
+    };
+
+    let msg = BankMsg::Send {
+        to_address: address.into(),
+        amount: vec![amount.clone()],
+    };
+    let res = Response::new()
+        .add_message(msg)
+        .add_attribute(ATTR_ACTION, action)
+        .add_attribute("amount", amount.to_string());
+    Ok(res)
+}
+
+/// Checks if provided funds are sufficient to pay the price in one of the
+/// supported denoms. Payment cannot be split across multiple denoms. Extra funds
+/// are ignored.
+///
+/// When `prices` is an empty list the user cannot pay because there is no possible
+/// denomination in which they could do that. This can be desired in case the cantract
+/// does not want to accapt any payment (i.e. is closed).
+pub fn validate_payment(prices: &[Coin], funds: &[Coin]) -> Result<(), ContractError> {
+    if prices.is_empty() {
+        return Err(ContractError::NoPaymentOption);
+    }
+
+    let prices = BTreeMap::from_iter(prices.iter().map(|c| (c.denom.clone(), c.amount)));
+    for fund in funds {
+        if let Some(price) = prices.get(&fund.denom) {
+            // user can pay in this provided denom
+            if fund.amount >= *price {
+                return Ok(());
+            }
+        }
+    }
+    Err(ContractError::InsufficientPayment)
 }
 
 /// this is a no-op
