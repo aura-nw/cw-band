@@ -69,6 +69,31 @@ pub fn execute(
             amount,
             address,
         } => execute_withdraw(deps, env, info, denom, amount, address),
+        ExecuteMsg::UpdateConfig {
+            client_id,
+            manager,
+            prices,
+            oracle_script_id,
+            ask_count,
+            min_count,
+            fee_limit,
+            prepare_gas,
+            execute_gas,
+            minimum_sources,
+        } => update_config(
+            deps,
+            info,
+            client_id,
+            manager,
+            prices,
+            oracle_script_id,
+            ask_count,
+            min_count,
+            fee_limit,
+            prepare_gas,
+            execute_gas,
+            minimum_sources,
+        ),
     }
 }
 
@@ -130,6 +155,62 @@ fn execute_withdraw(
     }
 
     withdraw_unchecked(deps, env, "execute_withdraw", denom, amount, address)
+}
+
+fn update_config(
+    deps: DepsMut,
+    info: MessageInfo,
+    client_id: Option<String>,
+    manager: Option<String>,
+    prices: Option<Vec<Coin>>,
+    oracle_script_id: Option<Uint64>,
+    ask_count: Option<Uint64>,
+    min_count: Option<Uint64>,
+    fee_limit: Option<Vec<Coin>>,
+    prepare_gas: Option<Uint64>,
+    execute_gas: Option<Uint64>,
+    minimum_sources: Option<u8>,
+) -> Result<Response, ContractError> {
+    let mut config = BAND_CONFIG.load(deps.storage)?;
+
+    if info.sender != config.manager {
+        return Err(ContractError::Unauthorized);
+    }
+
+    if let Some(client_id) = client_id {
+        config.client_id = client_id;
+    }
+    if let Some(manager) = manager {
+        config.manager = manager;
+    }
+    if let Some(prices) = prices {
+        config.prices = prices;
+    }
+    if let Some(oracle_script_id) = oracle_script_id {
+        config.oracle_script_id = oracle_script_id;
+    }
+    if let Some(ask_count) = ask_count {
+        config.ask_count = ask_count;
+    }
+    if let Some(min_count) = min_count {
+        config.min_count = min_count;
+    }
+    if let Some(fee_limit) = fee_limit {
+        config.fee_limit = fee_limit;
+    }
+    if let Some(prepare_gas) = prepare_gas {
+        config.prepare_gas = prepare_gas;
+    }
+    if let Some(execute_gas) = execute_gas {
+        config.execute_gas = execute_gas;
+    }
+    if let Some(minimum_sources) = minimum_sources {
+        config.minimum_sources = minimum_sources;
+    }
+
+    BAND_CONFIG.save(deps.storage, &config)?;
+
+    Ok(Response::new().add_attribute("method", "update_config"))
 }
 
 fn withdraw_unchecked(

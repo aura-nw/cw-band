@@ -45,6 +45,20 @@ pub enum ExecuteMsg {
         amount: Option<Uint128>,
         address: String,
     },
+    /// Update config entries
+    /// Only the manager address can do that.
+    UpdateConfig {
+        client_id: Option<String>,
+        manager: Option<String>,
+        prices: Option<Vec<Coin>>,
+        oracle_script_id: Option<Uint64>,
+        ask_count: Option<Uint64>,
+        min_count: Option<Uint64>,
+        fee_limit: Option<Vec<Coin>>,
+        prepare_gas: Option<Uint64>,
+        execute_gas: Option<Uint64>,
+        minimum_sources: Option<u8>,
+    },
 }
 
 #[cw_serde]
